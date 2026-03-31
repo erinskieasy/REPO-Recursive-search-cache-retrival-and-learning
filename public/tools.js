@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function deleteTool(id) {
     if (!confirm('Are you sure you want to delete this tool?')) return;
     try {
-      const res = await fetch(\`/api/tools/\${id}\`, { method: 'DELETE' });
+      const res = await fetch(`/api/tools/${id}`, { method: 'DELETE' });
       if (res.ok) {
         loadTools();
         if (toolIdInput.value === id) resetForm(); // Cancel edit if deleting currently edited tool
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     try {
-      const url = id ? \`/api/tools/\${id}\` : '/api/tools';
+      const url = id ? `/api/tools/${id}` : '/api/tools';
       const method = id ? 'PUT' : 'POST';
       
       const res = await fetch(url, {
