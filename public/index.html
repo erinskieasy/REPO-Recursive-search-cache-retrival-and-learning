@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Agentic Tool Search</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-container">
+        <div class="logo-icon"></div>
+        <h1>Agentic Tool Search</h1>
+      </div>
+      <p class="subtitle">Recursive Search Cache Retrieval & Learning System</p>
+    </header>
+
+    <main class="app-main">
+      <div class="search-section">
+        <form id="prompt-form" class="prompt-form">
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              id="prompt-input" 
+              placeholder="e.g. I need you to perform a web search..."
+              autocomplete="off"
+              required
+            />
+            <button type="submit" id="submit-btn" class="submit-btn">
+              <span class="btn-text">Search Tools</span>
+              <div class="loader-spinner" style="display: none;"></div>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="results-section" id="results-section" style="display: none;">
+        <div class="logs-container">
+          <h3>Agent Logs</h3>
+          <div class="logs-window" id="logs-window">
+            <!-- Logs will stream here -->
+          </div>
+        </div>
+
+        <div class="matches-container">
+          <div class="summary-header">
+            <h3>Capability Matches</h3>
+            <span class="match-count" id="match-count">0 found</span>
+          </div>
+          <div class="matches-grid" id="matches-grid">
+            <!-- Matches will appear here -->
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
