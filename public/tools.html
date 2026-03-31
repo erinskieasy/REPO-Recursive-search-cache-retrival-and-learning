@@ -77,12 +77,26 @@
       border: 1px solid rgba(255, 255, 255, 0.1);
       padding: 1rem;
       border-radius: 8px;
+      display: flex; flex-direction: column;
     }
     .tool-card h4 { margin: 0 0 0.5rem 0; color: #fff; }
-    .tool-card p { margin: 0 0 1rem 0; font-size: 0.9rem; color: #cbd5e1; }
+    .tool-card p { margin: 0 0 1rem 0; font-size: 0.9rem; color: #cbd5e1; flex-grow: 1; }
     .tool-props {
       background: rgba(0,0,0,0.3); padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; color: #94a3b8;
     }
+    .tool-actions {
+      display: flex; gap: 0.5rem; margin-top: 1rem;
+    }
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+    }
+    .btn-danger:hover { background: rgba(239, 68, 68, 0.4); }
+    .btn-edit {
+      background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+    }
+    .btn-edit:hover { background: rgba(59, 130, 246, 0.4); }
     .nav-links {
       display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem;
     }
@@ -100,14 +114,15 @@
         <div class="logo-icon"></div>
         <h1>Tool Management</h1>
       </div>
-      <p class="subtitle">Add and configure tools recursively</p>
+      <p class="subtitle">Add, Edit and Delete tools recursively</p>
     </header>
 
     <main class="app-main tools-container">
       
       <section class="add-tool-section">
-        <h3>Add New Tool</h3>
+        <h3 id="form-title">Add New Tool</h3>
         <form id="add-tool-form">
+          <input type="hidden" id="tool-id" value="">
           <div class="form-group">
             <label for="tool-name">Tool Name</label>
             <input type="text" id="tool-name" required placeholder="e.g. Image Generator" />
@@ -125,7 +140,10 @@
             <button type="button" id="add-prop-btn" class="btn-secondary">+ Add Property</button>
           </div>
           
-          <button type="submit" class="submit-btn" style="width: auto; padding: 0.75rem 2rem;">Save Tool</button>
+          <div style="display: flex; gap: 1rem;">
+            <button type="submit" id="submit-btn" class="submit-btn" style="width: auto; padding: 0.75rem 2rem;">Save Tool</button>
+            <button type="button" id="cancel-edit-btn" class="btn-secondary" style="display: none;">Cancel</button>
+          </div>
         </form>
       </section>
 

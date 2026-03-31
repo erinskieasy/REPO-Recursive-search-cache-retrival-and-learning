@@ -187,6 +187,18 @@ app.put('/api/tools/:id', (req, res) => {
   }
 });
 
+app.delete('/api/tools/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const stmt = db.prepare('DELETE FROM tools WHERE id = ?');
+    const result = stmt.run(id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Tool not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });
