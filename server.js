@@ -146,6 +146,47 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
+app.get('/api/tools', (req, res) => {
+  try {
+    const stmt = db.prepare('SELECT id, name, description, properties FROM tools ORDER BY id DESC');
+    const tools = stmt.all().map(t => ({
+      ...t,
+      properties: JSON.parse(t.properties || '{}')
+    }));
+    res.json({ tools });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tools', (req, res) => {
+  const { name, description, properties } = req.body;
+  if (!name || !description) return res.status(400).json({ error: 'Name and description are required' });
+  
+  try {
+    const stmt = db.prepare('INSERT INTO tools (name, description, properties) VALUES (?, ?, ?)');
+    const result = stmt.run(name, description, JSON.stringify(properties || {}));
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tools/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, description, properties } = req.body;
+  if (!name || !description) return res.status(400).json({ error: 'Name and description are required' });
+  
+  try {
+    const stmt = db.prepare('UPDATE tools SET name = ?, description = ?, properties = ? WHERE id = ?');
+    const result = stmt.run(name, description, JSON.stringify(properties || {}), id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Tool not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });

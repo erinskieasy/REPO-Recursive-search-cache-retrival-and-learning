@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tool Management - Agentic Tool Search</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .tools-container {
+      display: grid;
+      gap: 2rem;
+      margin-top: 1rem;
+    }
+    .add-tool-section, .tools-list-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #e2e8f0;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: #fff;
+      font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .dynamic-props {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem; margin-bottom: 1rem;
+    }
+    .prop-row {
+      display: flex; gap: 0.5rem; align-items: center;
+    }
+    .prop-row input {
+      flex: 1;
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .tool-list-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .tool-card {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    .tool-card h4 { margin: 0 0 0.5rem 0; color: #fff; }
+    .tool-card p { margin: 0 0 1rem 0; font-size: 0.9rem; color: #cbd5e1; }
+    .tool-props {
+      background: rgba(0,0,0,0.3); padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; color: #94a3b8;
+    }
+    .nav-links {
+      display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem;
+    }
+    .nav-links a { color: #3b82f6; text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="nav-links">
+        <a href="/">← Back to Search</a>
+      </div>
+      <div class="logo-container">
+        <div class="logo-icon"></div>
+        <h1>Tool Management</h1>
+      </div>
+      <p class="subtitle">Add and configure tools recursively</p>
+    </header>
+
+    <main class="app-main tools-container">
+      
+      <section class="add-tool-section">
+        <h3>Add New Tool</h3>
+        <form id="add-tool-form">
+          <div class="form-group">
+            <label for="tool-name">Tool Name</label>
+            <input type="text" id="tool-name" required placeholder="e.g. Image Generator" />
+          </div>
+          <div class="form-group">
+            <label for="tool-desc">Description</label>
+            <textarea id="tool-desc" required placeholder="What does this tool do?"></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label>Properties (Definitions)</label>
+            <div id="dynamic-props" class="dynamic-props">
+              <!-- Prop rows go here -->
+            </div>
+            <button type="button" id="add-prop-btn" class="btn-secondary">+ Add Property</button>
+          </div>
+          
+          <button type="submit" class="submit-btn" style="width: auto; padding: 0.75rem 2rem;">Save Tool</button>
+        </form>
+      </section>
+
+      <section class="tools-list-section">
+        <h3>Database Tools (<span id="tool-count">0</span>)</h3>
+        <div class="tool-list-grid" id="tool-list-grid">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/tools.js"></script>
+</body>
+</html>
