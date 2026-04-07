@@ -7,10 +7,15 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const resultsSection = document.getElementById('results-section');
   const logsWindow = document.getElementById('logs-window');
-  const matchesGrid = document.getElementById('matches-grid');
-  const matchCountLabel = document.getElementById('match-count');
+  const selectionArea = document.getElementById('selection-area');
+  const matchStatusLabel = document.getElementById('match-status');
+  
+  const feedbackActions = document.getElementById('feedback-actions');
+  const btnAgree = document.getElementById('btn-agree');
+  const btnDisagree = document.getElementById('btn-disagree');
 
   let activeStreamSource = null;
+  let currentSelectionState = null;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -23,28 +28,32 @@ document.addEventListener('DOMContentLoaded', () => {
     submitBtn.disabled = true;
     resultsSection.style.display = 'grid';
     logsWindow.innerHTML = '';
-    matchesGrid.innerHTML = '';
-    matchCountLabel.textContent = '0 found';
+    selectionArea.innerHTML = '';
+    matchStatusLabel.textContent = 'Orchestrator searching...';
+    feedbackActions.style.display = 'none';
 
-    // Disconnect old stream if exists
+    startOrchestratorPhase({ prompt });
+  });
+
+  function startOrchestratorPhase(params) {
     if (activeStreamSource) {
       activeStreamSource.close();
     }
 
+    loaderSpinner.style.display = 'block';
+
     try {
-      // 1. Open Server-Sent Events stream
       activeStreamSource = new EventSource('/api/stream');
       
       activeStreamSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         
         if (data.type === 'connected') {
-          // 2. Once connected, fire the fetch request with the streamId
-          const streamId = data.id;
-          fetch('/api/search', {
+          const payload = { streamId: data.id, ...params };
+          fetch('/api/orchestrate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, streamId })
+            body: JSON.stringify(payload)
           }).catch(err => {
             appendLog('Error querying server: ' + err.message, true);
             restoreBtn();
@@ -53,13 +62,16 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (data.type === 'log') {
           appendLog(data.payload);
         }
-        else if (data.type === 'match') {
-          const tools = data.payload;
-          tools.forEach(tool => appendMatch(tool));
+        else if (data.type === 'selection') {
+          currentSelectionState = data.payload;
+          renderSelection(currentSelectionState);
+          activeStreamSource.close();
+          loaderSpinner.style.display = 'none';
         }
-        else if (data.type === 'done') {
-          appendLog(`[SYSTEM] Finished. Capability Matches: ${data.payload.totalMatches}`);
-          matchCountLabel.textContent = `${data.payload.totalMatches} found`;
+        else if (data.type === 'exhausted') {
+          appendLog(`[SYSTEM] Orchestrator exhausted candidate list.`);
+          matchStatusLabel.textContent = `No tools found in cache.`;
+          selectionArea.innerHTML = `<p style="color: #94a3b8;">No suitable capability found. Try a different request or add a new tool.</p>`;
           activeStreamSource.close();
           restoreBtn();
         }
@@ -74,12 +86,76 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("SSE Error:", err);
         restoreBtn();
       };
-
     } catch (error) {
       appendLog('Failed to start request: ' + error.message, true);
       restoreBtn();
     }
-  });
+  }
+
+  function renderSelection(state) {
+    selectionArea.innerHTML = '';
+    matchStatusLabel.textContent = `Tool Selected - Awaiting User Feedback`;
+    
+    // Find the specific tool details
+    const selectedTool = state.batchTools.find(t => t.id === state.selectedToolId);
+    
+    if (selectedTool) {
+      const card = document.createElement('div');
+      card.className = 'match-card';
+      card.innerHTML = `
+        <div style="font-size: 0.8rem; color: #3b82f6; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">LLM Pick</div>
+        <div class="match-name">${escapeHTML(selectedTool.name)}</div>
+        <div class="match-desc">${escapeHTML(selectedTool.description)}</div>
+        <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.5rem;">Batch context: LLM evaluated ${state.batchTools.length} candidates.</div>
+      `;
+      selectionArea.appendChild(card);
+    }
+
+    feedbackActions.style.display = 'flex';
+  }
+
+  btnAgree.addEventListener('click', () => sendFeedback(true));
+  btnDisagree.addEventListener('click', () => sendFeedback(false));
+
+  async function sendFeedback(isBestMatch) {
+    if (!currentSelectionState) return;
+    
+    feedbackActions.style.display = 'none';
+    appendLog(`[SYSTEM] User clicked ${isBestMatch ? 'Agree' : 'Disagree'}. Submitting feedback...`);
+
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intent: currentSelectionState.intent,
+          objective: currentSelectionState.objective,
+          batchIds: currentSelectionState.batchIds,
+          selectedToolId: currentSelectionState.selectedToolId,
+          isBestMatch
+        })
+      });
+
+      appendLog(`[SYSTEM] Feedback logged to Resolution Ledger and Rankings Updated.`);
+
+      if (isBestMatch) {
+         matchStatusLabel.textContent = `Execution Complete (Success)`;
+         restoreBtn();
+      } else {
+         matchStatusLabel.textContent = `Seeking next candidate...`;
+         // Resume Orchestrator matching cycle from next index
+         startOrchestratorPhase({
+            objective: currentSelectionState.objective,
+            resumeIntent: currentSelectionState.intent,
+            resumeMainIndex: currentSelectionState.nextMainIndex,
+            resumeAuditionIndex: currentSelectionState.nextAuditionIndex
+         });
+      }
+    } catch (err) {
+      appendLog(`[ERROR] Failed to send feedback: ${err.message}`, true);
+      restoreBtn();
+    }
+  }
 
   function restoreBtn() {
     btnText.style.display = 'block';
@@ -94,23 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     el.innerHTML = `<span class="log-prefix">[${time}]</span> ${escapeHTML(msg)}`;
     logsWindow.appendChild(el);
-    
-    // Auto scroll
     logsWindow.scrollTop = logsWindow.scrollHeight;
-  }
-
-  function appendMatch(tool) {
-    const card = document.createElement('div');
-    card.className = 'match-card';
-    card.innerHTML = `
-      <div class="match-name">${escapeHTML(tool.name)}</div>
-      <div class="match-desc">${escapeHTML(tool.description)}</div>
-    `;
-    matchesGrid.appendChild(card);
-    
-    // Update count quickly
-    const current = matchesGrid.children.length;
-    matchCountLabel.textContent = `${current} found`;
   }
 
   function escapeHTML(str) {

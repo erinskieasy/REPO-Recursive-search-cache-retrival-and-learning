@@ -31,6 +31,60 @@ function initDB() {
     )
   `);
 
+  // Create tool_activity_log table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tool_activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tool_id INTEGER NOT NULL,
+      action TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE'
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create triggers for tools table to log activity
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS log_tools_insert AFTER INSERT ON tools
+    BEGIN
+      INSERT INTO tool_activity_log (tool_id, action) VALUES (NEW.id, 'INSERT');
+    END;
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS log_tools_update AFTER UPDATE ON tools
+    BEGIN
+      INSERT INTO tool_activity_log (tool_id, action) VALUES (NEW.id, 'UPDATE');
+    END;
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS log_tools_delete AFTER DELETE ON tools
+    BEGIN
+      INSERT INTO tool_activity_log (tool_id, action) VALUES (OLD.id, 'DELETE');
+    END;
+  `);
+
+  // Create intent_cache table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intent_cache (
+      intent TEXT PRIMARY KEY,
+      main_list TEXT, -- JSON array of tool IDs
+      audition_queue TEXT, -- JSON array of tool IDs
+      last_processed_log_id INTEGER DEFAULT 0
+    )
+  `);
+
+  // Create resolution_ledger table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS resolution_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      objective TEXT NOT NULL,
+      evaluated_batch TEXT, -- JSON array of evaluated tools
+      selected_tool_id INTEGER,
+      user_feedback TEXT, -- 'Agree', 'Disagree'
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed with dummy tools if empty
   const countStmt = db.prepare('SELECT COUNT(*) as count FROM tools');
   const { count } = countStmt.get();

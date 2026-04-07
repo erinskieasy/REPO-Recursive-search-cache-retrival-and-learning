@@ -19,80 +19,7 @@ try {
 
 const db = initDB();
 
-async function primaryAgent(userPrompt) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an intent extraction agent. Extract the core tool capability the user is requesting (e.g., "web search", "image generation"). Return exactly a JSON object with one key "intent" containing your extracted requirement as a string.'
-      },
-      { role: 'user', content: userPrompt }
-    ],
-    response_format: { type: 'json_object' }
-  });
-
-  const parsed = JSON.parse(response.choices[0].message.content);
-  return parsed.intent;
-}
-
-async function toolSearchAgent(intent, sendEvent) {
-  let offset = 0;
-  const batchSize = 5;
-  let totalMatches = 0;
-  let allMatchedTools = [];
-  let batchNumber = 1;
-
-  while (true) {
-    const batchStmt = db.prepare('SELECT id, name, description, properties FROM tools LIMIT ? OFFSET ?');
-    const tools = batchStmt.all(batchSize, offset);
-
-    if (tools.length === 0) break;
-
-    sendEvent('log', `Searching batch ${batchNumber} (${tools.length} tools) for intent: "${intent}"...`);
-
-    try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a Tool Search AI. You will be provided with an intent and a list of tools (in JSON format). Evaluate which tools in the list can satisfy the intent. Return exactly a JSON object containing a key "matchedIds", which is an array of integer IDs of the tools that match the intent.`
-          },
-          { role: 'user', content: JSON.stringify({ intent, tools }) }
-        ],
-        response_format: { type: 'json_object' }
-      });
-
-      const parsed = JSON.parse(response.choices[0].message.content);
-      const matchedIds = parsed.matchedIds || [];
-      const matchingToolsInBatch = tools.filter(t => matchedIds.includes(t.id));
-
-      totalMatches += matchedIds.length;
-      allMatchedTools.push(...matchingToolsInBatch);
-
-      // Record to DB as per instructions
-      const insertResult = db.prepare(`
-        INSERT INTO batch_results (batch_number, tools_scanned, tools_found_count, found_tools_details)
-        VALUES (?, ?, ?, ?)
-      `);
-      insertResult.run(batchNumber, tools.length, matchedIds.length, JSON.stringify(matchingToolsInBatch));
-      
-      sendEvent('log', `Batch ${batchNumber} complete: found ${matchedIds.length} capability matches.`);
-      if (matchingToolsInBatch.length > 0) {
-        sendEvent('match', matchingToolsInBatch);
-      }
-    } catch (err) {
-      console.error(`Tool Search AI Error on batch ${batchNumber}:`, err);
-      sendEvent('log', `Error processing batch ${batchNumber}`);
-    }
-
-    offset += batchSize;
-    batchNumber++;
-  }
-
-  return { totalMatches, tools: allMatchedTools };
-}
+const Orchestrator = require('./orchestrator');
 
 // Map of active SSE clients
 const clients = new Map();
@@ -114,35 +41,76 @@ app.get('/api/stream', (req, res) => {
   });
 });
 
-app.post('/api/search', async (req, res) => {
-  const { prompt, streamId } = req.body;
-  if (!prompt || !streamId) return res.status(400).json({ error: 'Missing parameters' });
-
+app.post('/api/orchestrate', async (req, res) => {
+  const { prompt, streamId, resumeMainIndex, resumeAuditionIndex, resumeIntent, objective } = req.body;
+  
   const client = clients.get(parseInt(streamId));
-  if (!client) return res.status(400).json({ error: 'Stream not found' });
-
-  const sendEvent = (type, payload) => {
-    client.write(`data: ${JSON.stringify({ type, payload })}\n\n`);
-  };
+  const sendEvent = client ? (type, payload) => client.write(`data: ${JSON.stringify({ type, payload })}\n\n`) : () => {};
 
   try {
-    sendEvent('log', `Primary Agent received prompt: "${prompt}"`);
-    const intent = await primaryAgent(prompt);
-    sendEvent('log', `Primary Agent extracted intent: "${intent}"`);
+    const orchestrator = new Orchestrator(db, openai, sendEvent);
+    sendEvent('log', `Orchestrator received objective: "${prompt || objective}"`);
+    
+    let cacheState;
+    let actualObjective = prompt || objective;
 
-    sendEvent('log', `Handing off to Tool Search AI...`);
-    const result = await toolSearchAgent(intent, sendEvent);
+    if (resumeIntent && resumeIntent !== "") {
+       // Resuming search loop
+       cacheState = db.prepare('SELECT * FROM intent_cache WHERE intent = ?').get(resumeIntent);
+       if (cacheState) {
+         cacheState.main_list = JSON.parse(cacheState.main_list || '[]');
+         cacheState.audition_queue = JSON.parse(cacheState.audition_queue || '[]');
+       }
+    } else {
+       cacheState = await orchestrator.getMatchedIntentCache(prompt);
+       cacheState = await orchestrator.applyActivityLog(cacheState);
+    }
+    
+    if (!cacheState) {
+      throw new Error("Could not initialize or find cache state.");
+    }
 
-    sendEvent('done', {
-      totalMatches: result.totalMatches,
-      intent
-    });
+    const result = await orchestrator.buildAndEvaluateBatches(
+      actualObjective, 
+      cacheState, 
+      resumeMainIndex || 0, 
+      resumeAuditionIndex || 0
+    );
+
+    if (result.exhausted) {
+       sendEvent('exhausted', { objective: actualObjective, intent: cacheState.intent });
+    } else {
+       sendEvent('selection', {
+         objective: result.objective,
+         intent: result.intent,
+         batchIds: result.batchIds,
+         batchTools: result.batchTools,
+         selectedToolId: result.selectedToolId,
+         nextMainIndex: result.nextMainIndex,
+         nextAuditionIndex: result.nextAuditionIndex
+       });
+    }
 
     res.json({ success: true });
   } catch (error) {
     console.error(error);
     sendEvent('error', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/feedback', (req, res) => {
+  const { intent, objective, batchIds, selectedToolId, isBestMatch } = req.body;
+  if (!intent || !objective || !batchIds || selectedToolId === undefined) {
+     return res.status(400).json({ error: 'Missing parameters' });
+  }
+
+  try {
+    const orchestrator = new Orchestrator(db, openai, () => {});
+    orchestrator.applyFeedback(intent, objective, batchIds, selectedToolId, isBestMatch);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

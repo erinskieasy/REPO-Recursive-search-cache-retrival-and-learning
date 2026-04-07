@@ -8,6 +8,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+  <style>
+    .match-card {
+      border-left: 4px solid #3b82f6;
+    }
+    .match-card.audition {
+      border-left-color: #f59e0b; /* highlight audition tools */
+    }
+  </style>
 </head>
 <body>
   <div class="app-container">
@@ -32,7 +40,7 @@
               required
             />
             <button type="submit" id="submit-btn" class="submit-btn">
-              <span class="btn-text">Search Tools</span>
+              <span class="btn-text">Execute Tool</span>
               <div class="loader-spinner" style="display: none;"></div>
             </button>
           </div>
@@ -49,11 +57,15 @@
 
         <div class="matches-container">
           <div class="summary-header">
-            <h3>Capability Matches</h3>
-            <span class="match-count" id="match-count">0 found</span>
+            <h3>Selected Tool candidate</h3>
+            <span class="match-count" id="match-status">Awaiting Orchestrator</span>
           </div>
-          <div class="matches-grid" id="matches-grid">
+          <div class="matches-grid" id="selection-area" style="display: flex; flex-direction: column;">
             <!-- Matches will appear here -->
+          </div>
+          <div class="feedback-actions" id="feedback-actions" style="display:none; gap: 1rem; margin-top: 1rem;">
+             <button id="btn-agree" class="btn-primary" style="background:#10b981; border:none; padding: 0.75rem 1rem; border-radius: 4px; color:#fff; cursor:pointer; font-weight:bold;">Agree (Simulate Success)</button>
+             <button id="btn-disagree" class="btn-danger" style="background:#ef4444; border:none; padding: 0.75rem 1rem; border-radius: 4px; color:#fff; cursor:pointer; font-weight:bold;">Disagree (Try Next Batch)</button>
           </div>
         </div>
       </div>
