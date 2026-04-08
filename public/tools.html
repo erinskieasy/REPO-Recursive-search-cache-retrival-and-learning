@@ -117,43 +117,67 @@
       <p class="subtitle">Add, Edit and Delete tools recursively</p>
     </header>
 
-    <main class="app-main tools-container">
-      
-      <section class="add-tool-section">
-        <h3 id="form-title">Add New Tool</h3>
-        <form id="add-tool-form">
-          <input type="hidden" id="tool-id" value="">
-          <div class="form-group">
-            <label for="tool-name">Tool Name</label>
-            <input type="text" id="tool-name" required placeholder="e.g. Image Generator" />
-          </div>
-          <div class="form-group">
-            <label for="tool-desc">Description</label>
-            <textarea id="tool-desc" required placeholder="What does this tool do?"></textarea>
-          </div>
-          
-          <div class="form-group">
-            <label>Properties (Definitions)</label>
-            <div id="dynamic-props" class="dynamic-props">
-              <!-- Prop rows go here -->
+    <main class="app-main">
+      <div class="tabs-header" id="management-tabs">
+        <button type="button" class="tab-btn active" data-target="tab-database">Tool Database</button>
+        <button type="button" class="tab-btn" data-target="tab-caches">Intent Caches (Orchestrator)</button>
+      </div>
+
+      <div id="tab-database" class="tab-content active" style="margin-top: 0;">
+        <div class="tools-container" style="margin-top: 0;">
+          <section class="add-tool-section">
+            <h3 id="form-title">Add New Tool</h3>
+            <form id="add-tool-form">
+              <input type="hidden" id="tool-id" value="">
+              <div class="form-group">
+                <label for="tool-name">Tool Name</label>
+                <input type="text" id="tool-name" required placeholder="e.g. Image Generator" />
+              </div>
+              <div class="form-group">
+                <label for="tool-desc">Description</label>
+                <textarea id="tool-desc" required placeholder="What does this tool do?"></textarea>
+              </div>
+              
+              <div class="form-group">
+                <label>Properties (Definitions)</label>
+                <div id="dynamic-props" class="dynamic-props">
+                  <!-- Prop rows go here -->
+                </div>
+                <button type="button" id="add-prop-btn" class="btn-secondary">+ Add Property</button>
+              </div>
+              
+              <div style="display: flex; gap: 1rem;">
+                <button type="submit" id="submit-btn" class="submit-btn" style="width: auto; padding: 0.75rem 2rem;">Save Tool</button>
+                <button type="button" id="cancel-edit-btn" class="btn-secondary" style="display: none;">Cancel</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="tools-list-section">
+            <h3>Tool Database (<span id="tool-count">0</span>)</h3>
+            <div class="tool-list-grid" id="tool-list-grid">
+              <!-- Populated by JS -->
             </div>
-            <button type="button" id="add-prop-btn" class="btn-secondary">+ Add Property</button>
-          </div>
-          
-          <div style="display: flex; gap: 1rem;">
-            <button type="submit" id="submit-btn" class="submit-btn" style="width: auto; padding: 0.75rem 2rem;">Save Tool</button>
-            <button type="button" id="cancel-edit-btn" class="btn-secondary" style="display: none;">Cancel</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="tools-list-section">
-        <h3>Tool Database (<span id="tool-count">0</span>)</h3>
-        <div class="tool-list-grid" id="tool-list-grid">
-          <!-- Populated by JS -->
+          </section>
         </div>
-      </section>
+      </div>
 
+      <div id="tab-caches" class="tab-content" style="margin-top: 0;">
+        <div class="tools-container" style="margin-top: 0;">
+           <section class="tools-list-section">
+             <div style="display:flex; justify-content: space-between; align-items:center;">
+               <h3>Persisted Intent Caches</h3>
+               <button type="button" id="refresh-caches-btn" class="btn-secondary">Refresh State</button>
+             </div>
+             <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+                This shows the Orchestrator's internal state. "Scanned Horizon" indicates how far lazily the tools table was scanned for this intent.
+             </p>
+             <div class="tool-list-grid" id="caches-list-grid" style="grid-template-columns: 1fr;">
+                <!-- Populated by JS -->
+             </div>
+           </section>
+        </div>
+      </div>
     </main>
   </div>
 

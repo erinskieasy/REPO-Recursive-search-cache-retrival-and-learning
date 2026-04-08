@@ -42,6 +42,8 @@ const Orchestrator = class {
       matchedIntent = JSON.parse(resp.choices[0].message.content).matched_intent;
     }
 
+    const total_tools = this.db.prepare('SELECT COUNT(*) as count FROM tools').get().count;
+
     if (matchedIntent && existingCaches.includes(matchedIntent)) {
       this.log(`Cache HIT for intent: "${matchedIntent}"`);
       const row = this.db.prepare('SELECT * FROM intent_cache WHERE intent = ?').get(matchedIntent);
@@ -50,6 +52,8 @@ const Orchestrator = class {
         main_list: JSON.parse(row.main_list || '[]'),
         audition_queue: JSON.parse(row.audition_queue || '[]'),
         last_processed_log_id: row.last_processed_log_id,
+        last_scanned_tool_id: row.last_scanned_tool_id || 0,
+        total_tools_rows: total_tools,
         isNew: false
       };
     } else {
@@ -59,11 +63,15 @@ const Orchestrator = class {
         main_list: [],
         audition_queue: [],
         last_processed_log_id: 0,
+        last_scanned_tool_id: 0,
+        total_tools_rows: total_tools,
         isNew: true
       };
       
-      this.db.prepare('INSERT INTO intent_cache (intent, main_list, audition_queue, last_processed_log_id) VALUES (?, ?, ?, ?)').run(
-        rawIntent, JSON.stringify([]), JSON.stringify([]), 0
+      this.db.prepare(`INSERT INTO intent_cache 
+        (intent, main_list, audition_queue, last_processed_log_id, last_scanned_tool_id, total_tools_rows) 
+        VALUES (?, ?, ?, ?, ?, ?)`).run(
+        rawIntent, JSON.stringify([]), JSON.stringify([]), 0, 0, total_tools
       );
       return newCache;
     }
@@ -103,28 +111,36 @@ const Orchestrator = class {
         mainSet.delete(tool_id);
         auditionSet.add(tool_id);
       } else if (action === 'INSERT' || action === 'UPDATE') {
+        // IGNORE INSERTS if tool_id is greater than last_scanned_tool_id!
+        // The JIT scanner will organically catch it when it reaches that ID.
+        if (action === 'INSERT' && tool_id > cacheState.last_scanned_tool_id) {
+           this.log(`Skipping activity log check for newly created tool ${tool_id} because it's beyond the JIT horizon. Will lazy-load later.`);
+           continue;
+        }
+
         if (!mainSet.has(tool_id) && !auditionSet.has(tool_id)) {
-          this.log(`Gatekeeper: Scanning tool ${tool_id} against intent "${cacheState.intent}"`);
-          try {
-            const resp = await this.openai.chat.completions.create({
-              model: 'gpt-4o-mini',
-              messages: [
-                { role: 'system', content: `Is this tool potentially relevant to fulfilling this user goal? Be moderately permissive but reject totally unrelated tools. Return exactly JSON: { "relevant": true } or { "relevant": false }` },
-                { role: 'user', content: `Goal: ${cacheState.intent}\nTool:\nName: ${tool.name}\nDescription: ${tool.description}` }
-              ],
-              response_format: { type: 'json_object' }
-            });
-            const isRelevant = JSON.parse(resp.choices[0].message.content).relevant;
-            
-            if (isRelevant) {
-              this.log(`Gatekeeper accepted tool ${tool_id} into audition queue.`);
-              auditionSet.add(tool_id);
-            } else {
-              this.log(`Gatekeeper rejected tool ${tool_id}.`);
-            }
-          } catch (e) {
-             this.log(`Error during gatekeeper evaluation: ${e.message}`);
-          }
+           // Gatekeep older tools that were updated or caught somehow
+           this.log(`Gatekeeper: Scanning updated tool ${tool_id} against intent "${cacheState.intent}"`);
+           try {
+             const resp = await this.openai.chat.completions.create({
+               model: 'gpt-4o-mini',
+               messages: [
+                 { role: 'system', content: `Is this tool potentially relevant to fulfilling this user goal? Be moderately permissive but reject totally unrelated tools. Return exactly JSON: { "relevant": true } or { "relevant": false }` },
+                 { role: 'user', content: `Goal: ${cacheState.intent}\nTool:\nName: ${tool.name}\nDescription: ${tool.description}` }
+               ],
+               response_format: { type: 'json_object' }
+             });
+             const isRelevant = JSON.parse(resp.choices[0].message.content).relevant;
+             
+             if (isRelevant) {
+               this.log(`Gatekeeper accepted tool ${tool_id} into audition queue.`);
+               auditionSet.add(tool_id);
+             } else {
+               this.log(`Gatekeeper rejected tool ${tool_id}.`);
+             }
+           } catch (e) {
+              this.log(`Error during gatekeeper evaluation: ${e.message}`);
+           }
         }
       }
     }
@@ -138,21 +154,89 @@ const Orchestrator = class {
   }
 
   saveCache(state) {
-    this.db.prepare('UPDATE intent_cache SET main_list = ?, audition_queue = ?, last_processed_log_id = ? WHERE intent = ?').run(
+    this.db.prepare(`UPDATE intent_cache 
+      SET main_list = ?, audition_queue = ?, last_processed_log_id = ?, last_scanned_tool_id = ?, total_tools_rows = ? 
+      WHERE intent = ?`).run(
       JSON.stringify(state.main_list),
       JSON.stringify(state.audition_queue),
       state.last_processed_log_id,
+      state.last_scanned_tool_id || 0,
+      state.total_tools_rows || 0,
       state.intent
     );
   }
 
   async buildAndEvaluateBatches(objective, cacheState, resumeMainIndex = 0, resumeAuditionIndex = 0) {
-     this.log(`Starting Orchestrator loop...`);
+     this.log(`Starting Orchestrator JIT loop...`);
      
      let mainIndex = resumeMainIndex;
      let auditionIndex = resumeAuditionIndex;
 
-     while (mainIndex < cacheState.main_list.length || auditionIndex < cacheState.audition_queue.length) {
+     while (true) {
+       // --- JIT CACHE REPLENISHMENT ---
+       let needsMoreCandidates = (mainIndex >= cacheState.main_list.length && auditionIndex >= cacheState.audition_queue.length);
+       
+       if (needsMoreCandidates) {
+          const highestDbToolRow = this.db.prepare('SELECT MAX(id) as maxId FROM tools').get();
+          const highestDbToolId = highestDbToolRow ? (highestDbToolRow.maxId || 0) : 0;
+          
+          if (cacheState.last_scanned_tool_id < highestDbToolId) {
+             this.log(`Lists exhausted. Waking Gatekeeper to lazy-load up to 5 more relevant tools...`);
+             let addedCount = 0;
+             let scanId = cacheState.last_scanned_tool_id;
+
+             while (addedCount < 1 && scanId < highestDbToolId) {
+                const nextChunk = this.db.prepare('SELECT * FROM tools WHERE id > ? ORDER BY id ASC LIMIT 10').all(scanId);
+                if (nextChunk.length === 0) break;
+
+                for (const tool of nextChunk) {
+                   scanId = tool.id;
+                   
+                   this.log(`Gatekeeper scanning Tool ${tool.id} (${tool.name})`);
+                   try {
+                     const resp = await this.openai.chat.completions.create({
+                       model: 'gpt-4o-mini',
+                       messages: [
+                         { role: 'system', content: `Is this tool potentially relevant to fulfilling this user goal? Be moderately permissive but reject totally unrelated tools. Return exactly JSON: { "relevant": true } or { "relevant": false }` },
+                         { role: 'user', content: `Goal: ${cacheState.intent}\nTool:\nName: ${tool.name}\nDescription: ${tool.description}` }
+                       ],
+                       response_format: { type: 'json_object' }
+                     });
+                     
+                     if (JSON.parse(resp.choices[0].message.content).relevant) {
+                       this.log(`Gatekeeper accepted tool ${tool.id}! Adding to audition queue.`);
+                       cacheState.audition_queue.push(tool.id);
+                       addedCount++;
+                     } else {
+                       this.log(`Gatekeeper rejected tool ${tool.id} (irrelevant).`);
+                     }
+                   } catch (e) {
+                     this.log(`Gatekeeper error on tool ${tool.id}: ${e.message}`);
+                   }
+                   
+                   if (addedCount >= 1) {
+                      scanId = tool.id; // Pause scan exactly here
+                      break;
+                   }
+                }
+             }
+             
+             // Save the JIT progress
+             cacheState.last_scanned_tool_id = scanId;
+             const totalToolsRightNow = this.db.prepare('SELECT COUNT(*) as count FROM tools').get().count;
+             cacheState.total_tools_rows = totalToolsRightNow;
+             this.saveCache(cacheState);
+             
+             if (addedCount === 0) {
+                 this.log(`Gatekeeper scanned remaining database but found no relevant tools.`);
+                 break; // Entire database scanned, none relevant.
+             }
+          } else {
+             break; // We have exhausted both the lists AND the entire database!
+          }
+       }
+
+       // --- BATCH COMPOSITION ---
        let batchIds = [];
        // Take up to 4 from main
        while(batchIds.length < 4 && mainIndex < cacheState.main_list.length) {
@@ -160,12 +244,12 @@ const Orchestrator = class {
          mainIndex++;
        }
        // Take 1 from audition
-       if (auditionIndex < cacheState.audition_queue.length) {
+       if (auditionIndex < cacheState.audition_queue.length && batchIds.length < 5) {
          batchIds.push(cacheState.audition_queue[auditionIndex]);
          auditionIndex++;
        }
 
-       if (batchIds.length === 0) break;
+       if (batchIds.length === 0) break; // Should not trigger unless completely empty
 
        const batchTools = batchIds.map(id => this.db.prepare('SELECT id, name, description FROM tools WHERE id = ?').get(id));
        
@@ -181,7 +265,7 @@ const Orchestrator = class {
            response_format: { type: 'json_object' }
          });
          
-         const selectedToolId = JSON.parse(resp.choices[0].message.content).selected_tool_id;
+         let selectedToolId = JSON.parse(resp.choices[0].message.content).selected_tool_id;
 
          if (selectedToolId) {
            this.log(`Orchestrator selected best candidate: tool ${selectedToolId}. Halting for User verification.`);
@@ -196,14 +280,14 @@ const Orchestrator = class {
              exhausted: false
            };
          } else {
-           this.log(`Orchestrator found no completely suitable candidate in current batch. Proceeding to next batch...`);
+           this.log(`Orchestrator rejected all tools in batch. Loop will fetch next batch...`);
          }
        } catch (e) {
            this.log(`Error evaluating batch: ${e.message}`);
        }
      }
 
-     this.log(`Orchestrator exhausted all candidates in the cache list. No suitable tool found.`);
+     this.log(`Orchestrator exhausted all candidates and entire database. No suitable tool found.`);
      return { objective, intent: cacheState.intent, exhausted: true };
   }
 
@@ -263,7 +347,14 @@ const Orchestrator = class {
       this.log(`Demoted tool based on negative user feedback.`);
     }
 
-    this.saveCache({ intent, main_list, audition_queue, last_processed_log_id: cacheRow.last_processed_log_id});
+    this.saveCache({ 
+      intent, 
+      main_list, 
+      audition_queue, 
+      last_processed_log_id: cacheRow.last_processed_log_id,
+      last_scanned_tool_id: cacheRow.last_scanned_tool_id,
+      total_tools_rows: cacheRow.total_tools_rows
+    });
 
     try {
         this.db.prepare('INSERT INTO resolution_ledger (objective, evaluated_batch, selected_tool_id, user_feedback) VALUES (?, ?, ?, ?)').run(

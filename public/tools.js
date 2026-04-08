@@ -184,6 +184,103 @@ document.addEventListener('DOMContentLoaded', () => {
     return p.innerHTML;
   }
 
+  // --- Tab Logic ---
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+  const refreshCachesBtn = document.getElementById('refresh-caches-btn');
+  const cachesListGrid = document.getElementById('caches-list-grid');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+       // Deselect all
+       tabBtns.forEach(b => b.classList.remove('active'));
+       tabContents.forEach(c => c.classList.remove('active'));
+       
+       // Select clicked
+       btn.classList.add('active');
+       const targetId = btn.getAttribute('data-target');
+       const targetContent = document.getElementById(targetId);
+       if(targetContent) targetContent.classList.add('active');
+
+       // Auto-load caches if tab clicked
+       if (targetId === 'tab-caches') {
+          loadCaches();
+       }
+    });
+  });
+
+  if(refreshCachesBtn) refreshCachesBtn.addEventListener('click', loadCaches);
+
+  async function loadCaches() {
+    if(!cachesListGrid) return;
+    try {
+      const res = await fetch('/api/caches');
+      const data = await res.json();
+      const caches = data.caches || [];
+      
+      cachesListGrid.innerHTML = '';
+      
+      if (caches.length === 0) {
+        cachesListGrid.innerHTML = '<p style="color: #94a3b8">No intents cached yet. Try searching for something on the main page!</p>';
+        return;
+      }
+      
+      caches.forEach(cache => {
+        const card = document.createElement('div');
+        card.className = 'cache-card';
+        
+        const mainList = JSON.parse(cache.main_list || '[]');
+        const auditionQueue = JSON.parse(cache.audition_queue || '[]');
+        const scannedId = cache.last_scanned_tool_id || 0;
+        const totalRows = cache.total_tools_rows || 0;
+        
+        card.innerHTML = `
+          <div class="cache-header">
+             <div class="cache-intent">Goal: "${escapeHTML(cache.intent)}"</div>
+             <button class="btn-danger delete-cache-btn" data-intent="${escapeHTML(cache.intent)}">Clear Cache</button>
+          </div>
+          <div class="cache-body">
+             <div><span class="queue-label">Main List (IDs):</span> <span style="color:#e2e8f0;">${mainList.length > 0 ? mainList.join(', ') : 'Empty'}</span></div>
+             <div><span class="queue-label">Audition Queue (IDs):</span> <span style="color:#e2e8f0;">${auditionQueue.length > 0 ? auditionQueue.join(', ') : 'Empty'}</span></div>
+             <div style="margin-top: 8px; font-size: 0.8rem; color: #94a3b8; border-top: 1px dotted #334155; padding-top: 8px;">
+               <strong>Scanned Horizon:</strong> Tool ID ${scannedId} / ${totalRows} total rows known at query
+             </div>
+          </div>
+        `;
+        cachesListGrid.appendChild(card);
+      });
+    } catch (err) {
+      console.error(err);
+      cachesListGrid.innerHTML = '<p style="color: #ef4444">Failed to load caches.</p>';
+    }
+  }
+
+  // Handle Cache Delete via delegation
+  if(cachesListGrid) {
+    cachesListGrid.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('delete-cache-btn')) {
+        const intent = e.target.getAttribute('data-intent');
+        await deleteCache(intent);
+      }
+    });
+  }
+
+  async function deleteCache(intent) {
+    if (!confirm(`Are you sure you want to clear the memory cache for "${intent}"?`)) return;
+    try {
+      const res = await fetch(`/api/caches/${encodeURIComponent(intent)}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadCaches();
+      } else {
+        const err = await res.json();
+        alert('Error: ' + err.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error deleting cache');
+    }
+  }
+
   // Init
   loadTools();
   createPropRow(); // Init with one empty prop row

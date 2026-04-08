@@ -167,6 +167,27 @@ app.delete('/api/tools/:id', (req, res) => {
   }
 });
 
+app.get('/api/caches', (req, res) => {
+  try {
+    const caches = db.prepare('SELECT * FROM intent_cache').all();
+    res.json({ caches });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/caches/:intent', (req, res) => {
+  const { intent } = req.params;
+  try {
+    const stmt = db.prepare('DELETE FROM intent_cache WHERE intent = ?');
+    const result = stmt.run(intent);
+    if (result.changes === 0) return res.status(404).json({ error: 'Cache not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });

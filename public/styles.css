@@ -317,8 +317,102 @@ body {
   background: #475569;
 }
 
+/* Tabs Components */
+.tabs-header {
+  display: flex;
+  gap: 8px;
+  background: var(--surface-color);
+  padding: 8px;
+  border-radius: var(--border-radius);
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--surface-lighter);
+  color: var(--accent-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.tab-content {
+  display: none;
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Cache Cards */
+.cache-card {
+  background: var(--surface-lighter);
+  padding: 18px;
+  border-radius: var(--border-radius);
+  margin-bottom: 16px;
+  border-left: 4px solid #f59e0b; 
+}
+
+.cache-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 12px;
+}
+
+.cache-intent {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cache-stats {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 16px;
+}
+.cache-stats span {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.cache-body {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.queue-label {
+  font-weight: 600;
+  color: #60a5fa;
+  margin-right: 8px;
+}
+
 @media (max-width: 768px) {
   .results-section {
     grid-template-columns: 1fr;
   }
 }
+

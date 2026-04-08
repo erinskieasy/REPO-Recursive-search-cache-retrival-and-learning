@@ -69,9 +69,20 @@ function initDB() {
       intent TEXT PRIMARY KEY,
       main_list TEXT, -- JSON array of tool IDs
       audition_queue TEXT, -- JSON array of tool IDs
-      last_processed_log_id INTEGER DEFAULT 0
+      last_processed_log_id INTEGER DEFAULT 0,
+      last_scanned_tool_id INTEGER DEFAULT 0,
+      total_tools_rows INTEGER DEFAULT 0
     )
   `);
+
+  // Migrate existing tables
+  try {
+    db.exec(`ALTER TABLE intent_cache ADD COLUMN last_scanned_tool_id INTEGER DEFAULT 0`);
+  } catch (err) {}
+  
+  try {
+    db.exec(`ALTER TABLE intent_cache ADD COLUMN total_tools_rows INTEGER DEFAULT 0`);
+  } catch (err) {}
 
   // Create resolution_ledger table
   db.exec(`
